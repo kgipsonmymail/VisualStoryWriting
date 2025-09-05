@@ -1,6 +1,6 @@
 import { Edge, Node } from '@xyflow/react';
 import * as Diff from 'diff';
-import OpenAI from 'openai';
+import { apiManager, APIType } from './APIManager';
 import { Descendant, Node as SlateNode } from 'slate';
 import { create } from 'zustand';
 import { shallow } from 'zustand/shallow';
@@ -19,21 +19,35 @@ const search = hashSplitted[hashSplitted.length-1]
 const params = new URLSearchParams(search);
 const key = params.get('k');
 
-let openaiKey = ""
-if (!key) {
-    if ("VITE_OPENAI_API_KEY" in import.meta.env) {
-        openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    } /*else {
-        throw new Error("No key provided in the URL parameters");
-    }*/
-} else {
-    openaiKey = atob(key)
+let apiKey = ""
+let defaultApiType: APIType = 'openai'
+
+// 从环境变量读取默认API类型
+if ("VITE_DEFAULT_API_PROVIDER" in import.meta.env) {
+    const envApiType = import.meta.env.VITE_DEFAULT_API_PROVIDER as APIType;
+    if (['openai', 'chatglm', 'small'].includes(envApiType)) {
+        defaultApiType = envApiType;
+    }
 }
 
-export const openai = new OpenAI({
-    apiKey: openaiKey,
-    dangerouslyAllowBrowser: true
-});
+if (!key) {
+    // 根据默认API类型从环境变量读取对应的API密钥
+    if (defaultApiType === 'openai' && "VITE_OPENAI_API_KEY" in import.meta.env) {
+        apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+    } else if (defaultApiType === 'chatglm' && "VITE_CHATGLM_API_KEY" in import.meta.env) {
+        apiKey = import.meta.env.VITE_CHATGLM_API_KEY;
+    } else if (defaultApiType === 'small' && "VITE_SMALL_API_KEY" in import.meta.env) {
+        apiKey = import.meta.env.VITE_SMALL_API_KEY;
+    }
+} else {
+    apiKey = atob(key)
+}
+
+// 初始化API管理器 - 延迟到API类型设置之后
+if (apiKey) {
+    // 存储密钥，但不立即初始化客户端
+    // 等到setAPIType被调用后再初始化
+}
 
 export interface EntityProperty {
     name: string
@@ -84,6 +98,7 @@ export interface ModelState {
     textActionMatches: TextActionMatch[];
     isStale: boolean;
     isReadOnly: boolean;
+    apiType: APIType;
 
     highlightedActionsSegment: { start: number, end: number } | null;
     filteredActionsSegment: { start: number, end: number } | null;
@@ -111,7 +126,8 @@ interface ModelAction {
     setHighlightedEntities: (entities: string[]) => void;
 
     setIsStale: (isStale: boolean) => void;
-    setOpenAIKey: (key: string) => void
+    setAPIKey: (key: string) => void;
+    setAPIType: (apiType: APIType) => void;
     setIsReadOnly: (isReadOnly: boolean) => void;
 }
 
@@ -138,6 +154,7 @@ function getInitialState() {
         selectedNodes: [],
         selectedEdges: [],
         isStale: false,
+        apiType: 'openai', // 默认使用OpenAI
         highlightedActionsSegment: null,
         filteredActionsSegment: null,
         highlightedEntities: [],
@@ -291,9 +308,20 @@ export const useModelStore = create<ModelState & ModelAction>()((set, get) => ({
     setIsStale: (isStale) => {
         set((state) => ({ isStale: isStale }));
     },
-    setOpenAIKey: (key) => {
-        openai.apiKey = key;
-      },
+    setAPIKey: (key) => {
+        apiManager.setApiKey(key);
+    },
+    setAPIType: (apiType) => {
+        apiManager.setAPIType(apiType);
+        set((state) => ({ apiType: apiType }));
+        // 如果有初始API密钥，也要重新设置以使用新的配置
+        if (apiKey) {
+            apiManager.setApiKey(apiKey);
+        }
+    },
+    getDefaultApiType: () => {
+        return defaultApiType;
+    },
     setIsReadOnly: (isReadOnly) => {
         set((state) => ({ isReadOnly: isReadOnly }));
     }

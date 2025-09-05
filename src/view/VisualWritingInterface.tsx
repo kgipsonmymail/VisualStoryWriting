@@ -123,9 +123,11 @@ export default function VisualWritingInterface(props: { children?: React.ReactNo
                   const center = { x: visualPanelRef.current!.clientWidth / 2, y: visualPanelRef.current!.clientHeight / 2 };
 
                   const visualRefreshCallback = () => {
+                    console.log("Starting visual refresh from text");
                     VisualRefresher.getInstance().refreshFromText(useModelStore.getState().text,
-                      () => { },
+                      () => { console.log("Visual refresh onUpdate called"); },
                       () => {
+                        console.log("Visual refresh finished");
                         setIsExtracting(false);
                       });
                   }

@@ -40,27 +40,34 @@ export default function StudyInterface() {
   const pstepId = params.get('stepId');
   const studyType = params.get('studyType');
 
-  if (participantId === -1 && pid) {
-    // @ts-ignore
-    window["model"] = useModelStore;
-    setParticipantId(participantId = parseInt(pid))
-    setStudyType(studyType === "READING" ? "READING" : "WRITING");
-    console.log("Study type: ", studyType);
-    if (studyType === "WRITING") {
-      setSteps(WritingStudyTaskGenerator.generateSteps(participantId))
-      setIsReadOnly(false);
-    } else {
-      setSteps(ReadingStudyTaskGenerator.generateSteps(participantId))
-      setIsReadOnly(true);
+  // Move URL parameter initialization to useEffect to avoid setState during render
+  useEffect(() => {
+    if (participantId === -1 && pid) {
+      // @ts-ignore
+      window["model"] = useModelStore;
+      const newParticipantId = parseInt(pid);
+      const newStudyType = studyType === "READING" ? "READING" : "WRITING";
+
+      setParticipantId(newParticipantId);
+      setStudyType(newStudyType);
+      console.log("Study type: ", newStudyType);
+
+      if (newStudyType === "WRITING") {
+        setSteps(WritingStudyTaskGenerator.generateSteps(newParticipantId));
+        setIsReadOnly(false);
+      } else {
+        setSteps(ReadingStudyTaskGenerator.generateSteps(newParticipantId));
+        setIsReadOnly(true);
+      }
+
+      // In case of failure, we allow jumping to a specific step directly
+      if (pstepId) {
+        setStepId(parseInt(pstepId));
+      } else {
+        setStepId(0);
+      }
     }
-    
-    // In case of failure, we allow jumping to a specific step directly
-    if (pstepId) {
-      setStepId(stepId = parseInt(pstepId));
-    } else {
-      setStepId(stepId = 0);
-    }
-  }
+  }, []); // Empty dependency array to run only once on mount
 
   const currentStep = steps[stepId];
 

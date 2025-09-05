@@ -7,7 +7,8 @@ import ReactMarkdown from 'react-markdown';
 import { Transforms, createEditor } from "slate";
 import { withHistory } from "slate-history";
 import { Editable, Slate, withReact } from "slate-react";
-import { openai, useModelStore } from "../model/Model";
+import { apiManager } from "../model/APIManager";
+import { useModelStore } from "../model/Model";
 import { useStudyStore } from "./StudyModel";
 
 export interface MessageGPT {
@@ -53,23 +54,34 @@ export default function BaselineInterface(props: { children?: React.ReactNode })
 
     useStudyStore.getState().logEvent("CHATGPT_PROMPTED", { prompt: textInputValue });
 
-    // Send the message to ChatGPT
+    // Send the message to API
     (async () => {
-      const stream = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: messages,
-        stream: true,
-      });
+      try {
+        const model = apiManager.getDefaultModel();
+        const temperature = apiManager.getDefaultTemperature();
+        const maxTokens = apiManager.getDefaultMaxTokens();
 
-      const response: MessageGPT = { content: "", role: 'assistant' };
+        const stream = apiManager.createChatCompletionStream({
+          model: model,
+          messages: messages,
+          stream: true,
+          temperature: temperature,
+          max_tokens: maxTokens,
+        });
 
-      setGptMessages([...messages, response]);
-      for await (const chunk of stream) {
-        response.content += chunk.choices[0]?.delta?.content || '';
+        const response: MessageGPT = { content: "", role: 'assistant' };
+
         setGptMessages([...messages, response]);
-      }
+        for await (const chunk of stream) {
+          response.content += chunk.choices[0]?.delta?.content || '';
+          setGptMessages([...messages, response]);
+        }
 
-      useStudyStore.getState().logEvent("CHATGPT_RESPONDED", { response: response.content, fullHistory: gptMessages });
+        useStudyStore.getState().logEvent("CHATGPT_RESPONDED", { response: response.content, fullHistory: gptMessages });
+      } catch (error) {
+        console.error('API error:', error);
+        // Handle error appropriately
+      }
 
     })();
   }

@@ -101,6 +101,12 @@ export class SentenceActionsExtractor extends JSONExtractorPrompt<z.infer<typeof
     }
 
     onPartialResult(partialResult: PromptResult<z.infer<typeof SCHEMA>>): void {
+        // Handle case where result is undefined or malformed
+        if (!partialResult.result || !partialResult.result.actions) {
+            console.log("Partial result is undefined or missing actions array:", partialResult);
+            return;
+        }
+
         const actionEdges = useModelStore.getState().actionEdges;
         const entities = useModelStore.getState().entityNodes;
         const locations = useModelStore.getState().locationNodes;

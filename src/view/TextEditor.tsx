@@ -138,60 +138,69 @@ export default function TextEditor({overlayOnHover = true} : {overlayOnHover?: b
   )
 
 
-  return (
-    <>
-      <div ref={divRef} onClick={(e) => {
-        if (e.target === divRef.current) {
-          useModelStore.getState().setFilteredActionsSegment(null, null);
+  const handleContainerClick = useCallback((e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      useModelStore.getState().setFilteredActionsSegment(null, null);
+      useModelStore.getState().setHighlightedActionsSegment(null, null);
+    }
+  }, []);
+
+  const handleSelectionChange = useCallback((selection: any) => {
+    if (!isReadOnly && selection) {
+      const startPoint = selection?.anchor;
+      const endPoint = selection?.focus;
+
+      const startIndex = SlateUtils.toStrIndex(globalEditor.children, startPoint);
+      const endIndex = SlateUtils.toStrIndex(globalEditor.children, endPoint);
+
+      const actions = TextUtils.getActionsAtPosition(useModelStore.getState().textActionMatches, Math.min(startIndex, endIndex), Math.max(startIndex, endIndex), true);
+
+      if (actions.length > 0) {
+        useModelStore.getState().setFilteredActionsSegment(actions[0].index, actions[actions.length - 1].index);
+      } else {
+        useModelStore.getState().setFilteredActionsSegment(null, null);
+      }
+    }
+  }, [isReadOnly]);
+
+  const handleTextChange = useCallback((newValue: any) => {
+    setTextState(newValue, false);
+  }, [setTextState]);
+
+  const handleMouseLeave = useCallback(() => {
+    useModelStore.getState().setHighlightedActionsSegment(null, null);
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!overlayOnHover) return;
+    // Get the index of the character under the mouse
+    const pos = TextUtils.caretPositionFromPoint(e.clientX, e.clientY);
+    if (pos) {
+      const slatePoint = ReactEditor.toSlatePoint(globalEditor, [pos.offsetNode, pos.offset], { exactMatch: true, suppressThrow: true });
+
+      if (slatePoint) {
+        const index = SlateUtils.toStrIndex(globalEditor.children, slatePoint);
+
+        const actions = TextUtils.getActionsAtPosition(useModelStore.getState().textActionMatches, index, index, true);
+        if (actions.length > 0) {
+          useModelStore.getState().setHighlightedActionsSegment(actions[0].index, actions[actions.length - 1].index);
+        } else {
           useModelStore.getState().setHighlightedActionsSegment(null, null);
         }
-      }} className={textIsBeingEdited ? "loading" : ""} style={{ position: 'relative', background: 'white', height: '100%', width: '50%', paddingTop: 60, paddingLeft: 50, paddingRight: 50, borderRadius: '2px', boxShadow: '0 0 10px rgba(0,0,0,0.1)', overflow: 'scroll' }}>
-        <Slate onSelectionChange={(selection) => {
-          if (!isReadOnly && selection) {
-            const startPoint = selection?.anchor;
-            const endPoint = selection?.focus;
+      }
+    }
+  }, [overlayOnHover]);
 
-            const startIndex = SlateUtils.toStrIndex(globalEditor.children, startPoint);
-            const endIndex = SlateUtils.toStrIndex(globalEditor.children, endPoint);
-
-            const actions = TextUtils.getActionsAtPosition(useModelStore.getState().textActionMatches, Math.min(startIndex, endIndex), Math.max(startIndex, endIndex), true);
-
-            if (actions.length > 0) {
-              useModelStore.getState().setFilteredActionsSegment(actions[0].index, actions[actions.length - 1].index);
-            } else {
-              useModelStore.getState().setFilteredActionsSegment(null, null);
-            }
-          }
-
-        }}
-          editor={globalEditor} initialValue={useModelStore.getState().textState} onChange={newValue => {
-            setTextState(newValue, false);
-          }}>
-          <Editable 
+  return (
+    <>
+      <div ref={divRef} onClick={handleContainerClick} className={textIsBeingEdited ? "loading" : ""} style={{ position: 'relative', background: 'white', height: '100%', width: '50%', paddingTop: 60, paddingLeft: 50, paddingRight: 50, borderRadius: '2px', boxShadow: '0 0 10px rgba(0,0,0,0.1)', overflow: 'scroll' }}>
+        <Slate onSelectionChange={handleSelectionChange}
+          editor={globalEditor} initialValue={useModelStore.getState().textState} onChange={handleTextChange}>
+          <Editable
           readOnly={isReadOnly}
           decorate={activeSelectionDecoration}
-          onMouseLeave={() => {
-            useModelStore.getState().setHighlightedActionsSegment(null, null);
-          }}
-          onMouseMove={(e) => {
-            if (!overlayOnHover) return;
-            // Get the index of the character under the mouse
-            const pos = TextUtils.caretPositionFromPoint(e.clientX, e.clientY);
-            if (pos) {
-              const slatePoint = ReactEditor.toSlatePoint(globalEditor, [pos.offsetNode, pos.offset], { exactMatch: true, suppressThrow: true });
-
-              if (slatePoint) {
-                const index = SlateUtils.toStrIndex(globalEditor.children, slatePoint);
-
-                const actions = TextUtils.getActionsAtPosition(useModelStore.getState().textActionMatches, index, index, true);
-                if (actions.length > 0) {
-                  useModelStore.getState().setHighlightedActionsSegment(actions[0].index, actions[actions.length - 1].index);
-                } else {
-                  useModelStore.getState().setHighlightedActionsSegment(null, null);
-                }
-              }
-            }
-          }} renderLeaf={renderLeaf} />
+          onMouseLeave={handleMouseLeave}
+          onMouseMove={handleMouseMove} renderLeaf={renderLeaf} />
         </Slate>
 
         {isTextSuggested && <div style={{ position: 'absolute', top: 10, transform: 'translate(-50%, 0)', left: '50%' }}>

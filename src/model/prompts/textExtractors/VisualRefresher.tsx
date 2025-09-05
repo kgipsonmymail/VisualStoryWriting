@@ -51,9 +51,14 @@ export class VisualRefresher {
     }
 
     refreshFromText(text: string, onUpdate?: () => void, onFinished?: () => void) {
-        if (this.previousText === text) return;
+        console.log("VisualRefresher.refreshFromText called with text length:", text.length);
+        if (this.previousText === text) {
+            console.log("Text unchanged, skipping refresh");
+            return;
+        }
 
         // First we clear everything that became invalid since the new text
+        console.log("Stopping all simulations and clearing selections");
         LayoutUtils.stopAllSimulations();
         // We will be playing with the actions, the selection will become meaningless, better to clear it
         //TODO: Be smart and only unselect the things that are actually becoming invalid. Otherwise try very hard to preserve the selection
@@ -65,7 +70,8 @@ export class VisualRefresher {
         this.clearInvalidActions(text);
         
         // Loop over the sentences in the text by finding the index position of the periods
-        const regex = /[^.!?]+[.!?]+/g;
+        // Support both English and Chinese punctuation marks
+        const regex = /[^.!?。！？]+[.!?。！？]+/g;
         let result;
         let sentences : {start: number, end: number, text: string}[] = [];
 
@@ -82,30 +88,48 @@ export class VisualRefresher {
             }
         }
 
+        // Fallback: if no sentences found (e.g., text without punctuation), treat entire text as one sentence
+        if (sentences.length === 0 && text.trim().length > 0) {
+            console.log("No sentences found with punctuation, treating entire text as one sentence");
+            sentences.push({
+                start: 0,
+                end: text.length,
+                text: text.trim()
+            });
+        }
+
         // Only bother updating the sentences that were not already in the previous text
         sentences = sentences.filter((sentence) => !this.previousText.includes(sentence.text));
         
         // Now we extract the actions from each sentences
         const actionPromises = sentences.map((sentence) => {
             const entities = useModelStore.getState().entityNodes;
-            const prompt = new SentenceActionsExtractor(entities, text.substring(0, sentence.start), sentence.text, text.substring(sentence.end, text.length));
-            prompt.onUpdate = () => {
+            const sentenceExtractor = new SentenceActionsExtractor(entities, text.substring(0, sentence.start), sentence.text, text.substring(sentence.end, text.length));
+            sentenceExtractor.onUpdate = () => {
                 if (onUpdate) onUpdate();
                 this.onUpdate();
             }
-            return prompt
+            return sentenceExtractor;
         });
 
+        console.log(`Found ${sentences.length} sentences to process`);
         new ParallelPrompts(actionPromises).execute().then((results) => {
+            console.log("ParallelPrompts execution completed with results:", results);
             const actions = useModelStore.getState().actionEdges.map((actionEdge) => {
                 const sourceEntity = useModelStore.getState().entityNodes.find(entity => entity.id === actionEdge.source);
                 const targetEntity = useModelStore.getState().entityNodes.find(entity => entity.id === actionEdge.target);
                 return {name: actionEdge.data?.name, source: sourceEntity?.data.name, target: targetEntity?.data.name, location: actionEdge.data?.sourceLocation, passage: actionEdge.data?.passage}
             });
             console.log("Extracted actions:", actions);
-            
-            if (onFinished) onFinished();
+
+            if (onFinished) {
+                console.log("Calling onFinished callback");
+                onFinished();
+            }
+            console.log("Calling onRefreshDone");
             this.onRefreshDone();
+        }).catch((error) => {
+            console.error("Error in ParallelPrompts execution:", error);
         });
 
 
